@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>IoT Safety Monitoring - ESP32</title>
+
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+    <!-- Google Font: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-main: #0B0F19;
+            --bg-card: rgba(17, 24, 39, 0.7);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-primary: #F3F4F6;
+            --text-secondary: #9CA3AF;
+            --accent-glow: rgba(37, 99, 235, 0.25);
+            --danger-bg: rgba(220, 38, 38, 0.35);
+            --danger-border: #EF4444;
+            --danger-glow: rgba(239, 68, 68, 0.6);
+        }
+
+        body {
+            margin: 0;
+            background-color: var(--bg-main);
+            background-image: 
+                radial-gradient(circle at 15% 20%, rgba(37, 99, 235, 0.15) 0%, transparent 45%),
+                radial-gradient(circle at 85% 60%, rgba(6, 182, 212, 0.12) 0%, transparent 40%);
+            background-attachment: fixed;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+
+        .main-wrapper {
+            margin-left: 0;
+            padding: 24px 32px;
+            min-height: 100vh;
+            max-width: 1400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .top-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .header-title h2 {
+            font-size: clamp(20px, 4vw, 26px);
+            font-weight: 700;
+            margin: 0;
+            background: linear-gradient(90deg, #FFFFFF, #9CA3AF);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-title p {
+            font-size: clamp(12px, 2vw, 14px);
+            color: var(--text-secondary);
+            margin: 4px 0 0 0;
+        }
+
+        .header-status-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--bg-card);
+            padding: 8px 16px;
+            border-radius: 30px;
+            border: 1px solid var(--card-border);
+            backdrop-filter: blur(10px);
+        }
+
+        .glass-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card.card-danger {
+            background: var(--danger-bg) !important;
+            border-color: var(--danger-border) !important;
+            box-shadow: 0 0 25px var(--danger-glow) !important;
+            animation: pulse-red 1.2s infinite alternate;
+        }
+
+        @keyframes pulse-red {
+            from { box-shadow: 0 0 15px var(--danger-glow); }
+            to { box-shadow: 0 0 35px rgba(239, 68, 68, 0.9); }
+        }
+
+        .card-header-custom {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .sensor-card-title {
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .card-danger .sensor-card-title { color: #FCA5A5 !important; }
+
+        .sensor-card-value {
+            font-size: clamp(24px, 3vw, 32px);
+            font-weight: 700;
+            margin: 8px 0;
+            color: #FFFFFF;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-online {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10B981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .status-offline {
+            background: rgba(239, 68, 68, 0.15);
+            color: #EF4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .status-danger-active {
+            background: rgba(239, 68, 68, 0.3);
+            color: #FF6B6B;
+            border: 1px solid #EF4444;
+            animation: blink 0.8s infinite;
+        }
+
+        @keyframes blink { 50% { opacity: 0.5; } }
+
+        #map {
+            width: 100%;
+            height: clamp(280px, 40vh, 380px);
+            border-radius: 14px;
+            z-index: 1;
+        }
+
+        .leaflet-tile { filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7); }
+        .leaflet-container { background: #0B0F19 !important; }
+
+        .lcd-container {
+            background: #05140B;
+            border: 2px solid #103820;
+            border-radius: 14px;
+            padding: 16px;
+            box-shadow: inset 0 0 15px rgba(0, 255, 100, 0.15);
+        }
+
+        .lcd-screen {
+            font-family: 'Courier New', monospace;
+            color: #38BDF8;
+            text-shadow: 0 0 5px rgba(56, 189, 248, 0.6);
+            font-weight: 700;
+            font-size: clamp(14px, 1.8vw, 18px);
+            line-height: 1.6;
+            word-break: break-all;
+        }
+
+        .siren-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #6B7280;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+
+        .siren-dot.active {
+            background: #EF4444;
+            box-shadow: 0 0 12px #EF4444;
+        }
+
+        .chart-container {
+            position: relative;
+            height: clamp(220px, 35vh, 280px);
+        }
+
+        .custom-table-container {
+            overflow-x: auto;
+            max-height: 320px;
+        }
+
+        .table-custom {
+            width: 100%;
+            min-width: 600px;
+            color: var(--text-primary);
+            border-collapse: separate;
+            border-spacing: 0 6px;
+        }
+
+        .table-custom th {
+            padding: 12px 16px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 12px;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        .table-custom td {
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.02);
+            font-size: 13px;
+        }
+
+        .table-custom tr td:first-child { border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
+        .table-custom tr td:last-child { border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
+
+        @media (max-width: 768px) {
+            .main-wrapper { padding: 16px 12px; }
+            .glass-card { padding: 16px; border-radius: 16px; }
+            .top-header { flex-direction: column; align-items: flex-start; }
+            .header-status-box { width: 100%; justify-content: space-between; }
+        }
+    </style>
+</head>
+
+<body>
+
+<main class="main-wrapper">
+
+    <header class="top-header">
+        <div class="header-title">
+            <h2>Make Safety Simple!</h2>
+            <p>Real-time Early Warning Monitoring System (Firebase Station)</p>
+        </div>
+
+        <div class="header-status-box">
+            <div class="small text-secondary">
+                Update: <strong id="lastUpdate" class="text-white">-</strong>
+            </div>
+            <span id="connectionStatus" class="status-badge status-offline">
+                <span>●</span>
+                <span>Terputus</span>
+            </span>
+        </div>
+    </header>
+
+    <div class="row g-2 g-md-3 mb-3 mb-md-4">
+        <div class="col-12 col-sm-6 col-lg-4">
+            <div class="glass-card" id="cardGempa">
+                <div class="sensor-card-title">Sensor Gempa (Vibration)</div>
+                <div class="sensor-card-value" id="sensor1">-</div>
+                <div class="small text-secondary" id="sensor1Unit">Status Digital</div>
+            </div>
+        </div>
+
+        <div class="col-12 col-sm-6 col-lg-4">
+            <div class="glass-card" id="cardAir">
+                <div class="sensor-card-title">Level Ketinggian Air</div>
+                <div class="sensor-card-value" id="sensor2">-</div>
+                <div class="small text-secondary" id="sensor2Unit">Kategori Air</div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-4">
+            <div class="glass-card" id="cardStatus">
+                <div class="sensor-card-title">Status Perangkat ESP32</div>
+                <div class="my-2">
+                    <span id="deviceStatus" class="status-badge status-offline">
+                        <span>●</span> Offline
+                    </span>
+                </div>
+                <div class="small text-secondary text-truncate">
+                    ID: <strong id="deviceId" class="text-white">-</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-2 g-md-3 mb-3 mb-md-4">
+        <div class="col-12 col-lg-8">
+            <div class="glass-card h-100">
+                <div class="card-header-custom">
+                    <span><i class="bi bi-geo-alt me-2 text-info"></i>Lokasi Stasiun Monitoring</span>
+                    <span class="small text-secondary">Peta Interaktif</span>
+                </div>
+                <div id="map"></div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-4 d-flex flex-column gap-3">
+            <div class="glass-card" id="sirenCard">
+                <div class="card-header-custom">
+                    <span><i class="bi bi-bell-fill me-2 text-warning"></i>Kontrol Sirine</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <div class="fw-semibold">Paksa Sirine Aktif</div>
+                        <div class="small text-secondary">Trigger Realtime Firebase</div>
+                    </div>
+                    <div class="form-check form-switch fs-4">
+                        <input class="form-check-input" type="checkbox" role="switch" id="sirenSwitch">
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2 pt-2 border-top border-secondary border-opacity-25">
+                    <span class="siren-dot" id="sirenIndicator"></span>
+                    <span id="sirenStatus" class="small fw-semibold text-secondary">Sirine Mati</span>
+                </div>
+            </div>
+
+            <div class="glass-card flex-grow-1">
+                <div class="card-header-custom">
+                    <span><i class="bi bi-display me-2 text-info"></i>Virtual LCD (16x2)</span>
+                </div>
+                <div class="lcd-container">
+                    <div class="lcd-screen" id="lcdLine1">CONNECTING...</div>
+                    <div class="lcd-screen" id="lcdLine2">WAITING FIREBASE</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="glass-card mb-3 mb-md-4">
+        <div class="card-header-custom">
+            <span><i class="bi bi-graph-up-arrow me-2 text-primary"></i>Grafik Real-time Kategori Air & Gempa</span>
+            <span class="small text-secondary">Live Telemetry</span>
+        </div>
+        <div class="chart-container">
+            <canvas id="sensorChart"></canvas>
+        </div>
+    </div>
+
+    <div class="glass-card">
+        <div class="card-header-custom">
+            <span><i class="bi bi-list-ul me-2 text-success"></i>Log Riwayat Peringatan</span>
+            <button class="btn btn-sm btn-outline-light rounded-pill px-3" id="btnDownloadCSV">
+                <i class="bi bi-download me-1"></i> Export CSV
+            </button>
+        </div>
+        <div class="custom-table-container">
+            <table class="table-custom">
+                <thead>
+                    <tr>
+                        <th>Waktu</th>
+                        <th>ID Perangkat</th>
+                        <th>Status</th>
+                        <th>Gempa</th>
+                        <th>Level Air</th>
+                        <th>Sirine</th>
+                    </tr>
+                </thead>
+                <tbody id="logTable"></tbody>
+            </table>
+        </div>
+    </div>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+<!-- FIREBASE INTEGRATION SCRIPT -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBTRcXIHcqHv411ar1Nanvz3qrKBNNQtiM",
+    authDomain: "gempa-air-6e02d.firebaseapp.com",
+    databaseURL: "https://gempa-air-6e02d-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "gempa-air-6e02d",
+    storageBucket: "gempa-air-6e02d.firebasestorage.app",
+    messagingSenderId: "415490190642",
+    appId: "1:415490190642:web:02d5833a0e115dc802bb2b",
+    measurementId: "G-MQJQ9F1HCX"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  let eventLogs = [];
+  let audioCtx = null;
+  let sirenOscillator = null;
+  let sirenGain = null;
+  let sirenInterval = null;
+
+  // Inisialisasi Map Leaflet
+  const map = L.map("map").setView([-6.948306, 110.389222], 18);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  let deviceMarker = null;
+  let dangerZoneCircle = null;
+
+  function updateMap(lat, lng, data, waterText, isDanger) {
+      if (typeof lat !== "number" || typeof lng !== "number") return;
+
+      const popupContent = `
+          <div style="color: #111; font-family: sans-serif; font-size: 13px;">
+              <strong>${data.deviceId ?? "ESP32-SAFETY-01"}</strong><br>
+              Status: ${data.status ?? "offline"}<br>
+              IP: ${data.ipAddress ?? "-"}<br>
+              Gempa: ${data.gempa?.keterangan ?? "NORMAL"}<br>
+              Air: ${waterText ?? "Aman"}
+          </div>
+      `;
+
+      if (!deviceMarker) {
+          deviceMarker = L.marker([lat, lng]).addTo(map);
+      } else {
+          deviceMarker.setLatLng([lat, lng]);
+      }
+      deviceMarker.bindPopup(popupContent);
+
+      // Lingkaran zona bahaya
+      if (isDanger) {
+          if (!dangerZoneCircle) {
+              dangerZoneCircle = L.circle([lat, lng], {
+                  color: '#EF4444',
+                  fillColor: '#EF4444',
+                  fillOpacity: 0.35,
+                  radius: 30
+              }).addTo(map);
+          } else {
+              dangerZoneCircle.setLatLng([lat, lng]);
+          }
+      } else if (dangerZoneCircle) {
+          map.removeLayer(dangerZoneCircle);
+          dangerZoneCircle = null;
+      }
+  }
+
+  // Inisialisasi Chart.js
+  const chartCtx = document.getElementById("sensorChart");
+  const sensorChart = new Chart(chartCtx, {
+      type: "line",
+      data: {
+          labels: [],
+          datasets: [
+              {
+                  label: "Indikator Gempa (1/0)",
+                  data: [],
+                  borderColor: "#EF4444",
+                  backgroundColor: "rgba(239, 68, 68, 0.15)",
+                  tension: 0.2,
+                  borderWidth: 2,
+                  fill: true
+              },
+              {
+                  label: "Level Air (0:Aman, 1:Rendah, 2:Sedang, 3:Tinggi, 4:Bahaya!)",
+                  data: [],
+                  borderColor: "#38BDF8",
+                  backgroundColor: "rgba(56, 189, 248, 0.15)",
+                  tension: 0.3,
+                  borderWidth: 2,
+                  fill: true
+              }
+          ]
+      },
+      options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+              legend: { labels: { color: '#9CA3AF', font: { family: 'Inter' } } }
+          },
+          scales: {
+              x: { ticks: { color: '#9CA3AF' }, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
+              y: {
+                  min: 0,
+                  max: 4,
+                  ticks: {
+                      color: '#9CA3AF',
+                      stepSize: 1,
+                      callback: function(val) {
+                          if (val === 0) return 'Aman';
+                          if (val === 1) return 'Rendah';
+                          if (val === 2) return 'Sedang';
+                          if (val === 3) return 'Tinggi';
+                          if (val === 4) return 'Bahaya!';
+                          return '';
+                      }
+                  },
+                  grid: { color: 'rgba(255, 255, 255, 0.05)' }
+              }
+          }
+      }
+  });
+
+  // Logika Kategori Air Berdasarkan ADC
+  function getWaterCategoryFromADC(adcVal) {
+      const adc = Number(adcVal) || 0;
+      if (adc < 500) return { text: "Aman", level: 0 };
+      if (adc < 3000) return { text: "Rendah", level: 1 };
+      if (adc < 4000) return { text: "Sedang", level: 2 };
+      if (adc < 4090) return { text: "Tinggi", level: 3 };
+      return { text: "Bahaya!", level: 4 };
+  }
+
+  function updateChart(gempaVal, waterLevelNum, timestamp) {
+      const label = timestamp.toLocaleTimeString("id-ID");
+      sensorChart.data.labels.push(label);
+      sensorChart.data.datasets[0].data.push(gempaVal ? 1 : 0);
+      sensorChart.data.datasets[1].data.push(waterLevelNum);
+
+      while (sensorChart.data.labels.length > 30) {
+          sensorChart.data.labels.shift();
+          sensorChart.data.datasets.forEach(ds => ds.data.shift());
+      }
+      sensorChart.update("none");
+  }
+
+  function updateDeviceStatus(status, isDanger) {
+      const element = document.getElementById("deviceStatus");
+      const normalized = String(status).toLowerCase();
+
+      if (isDanger) {
+          element.className = "status-badge status-danger-active";
+          element.innerHTML = "<span>●</span> BAHAYA!";
+      } else if (normalized === "online" || normalized === "connected") {
+          element.className = "status-badge status-online";
+          element.innerHTML = "<span>●</span> Online";
+      } else {
+          element.className = "status-badge status-offline";
+          element.innerHTML = "<span>●</span> Offline";
+      }
+  }
+
+  function updateSirenUI(isDanger, isWarning) {
+      const card = document.getElementById("sirenCard");
+      const status = document.getElementById("sirenStatus");
+      const indicator = document.getElementById("sirenIndicator");
+
+      if (isDanger) {
+          card.classList.add("card-danger");
+          status.textContent = "ALARM BAHAYA AKTIF!";
+          status.style.color = "#FF6B6B";
+          indicator.classList.add("active");
+          playWebSirenSound();
+      } else if (isWarning) {
+          card.classList.add("card-danger");
+          status.textContent = "Peringatan (Air Sedang/Tinggi)";
+          status.style.color = "#FBBF24";
+          indicator.classList.add("active");
+          stopWebSirenSound();
+      } else {
+          card.classList.remove("card-danger");
+          status.textContent = "Sirine Mati";
+          status.style.color = "var(--text-secondary)";
+          indicator.classList.remove("active");
+          stopWebSirenSound();
+      }
+  }
+
+  // Suara Sirine Web Audio API
+  function playWebSirenSound() {
+      if (sirenOscillator) return;
+
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+
+      sirenOscillator = audioCtx.createOscillator();
+      sirenGain = audioCtx.createGain();
+      sirenOscillator.type = 'sine';
+      sirenOscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+      sirenGain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      sirenOscillator.connect(sirenGain);
+      sirenGain.connect(audioCtx.destination);
+      sirenOscillator.start();
+
+      let state = false;
+      sirenInterval = setInterval(() => {
+          if (!sirenOscillator || !audioCtx) return;
+          const now = audioCtx.currentTime;
+          state = !state;
+          sirenGain.gain.setValueAtTime(0.1, now);
+          sirenOscillator.frequency.exponentialRampToValueAtTime(state ? 1200 : 800, now + 0.4);
+      }, 450);
+  }
+
+  function stopWebSirenSound() {
+      if (sirenInterval) { clearInterval(sirenInterval); sirenInterval = null; }
+      if (sirenOscillator) {
+          try { 
+              sirenOscillator.stop(); 
+              sirenOscillator.disconnect(); 
+          } catch (e) {}
+          sirenOscillator = null;
+      }
+  }
+
+  // Toggle Manual Sirine ke Firebase
+  document.getElementById("sirenSwitch").addEventListener("change", (e) => {
+      set(ref(db, '/monitoring/siren'), e.target.checked);
+  });
+
+  // Indikator Koneksi Firebase
+  const connectedRef = ref(db, ".info/connected");
+  onValue(connectedRef, (snap) => {
+      const connElem = document.getElementById("connectionStatus");
+      if (snap.val() === true) {
+          connElem.className = "status-badge status-online";
+          connElem.innerHTML = "<span>●</span> Terhubung";
+      } else {
+          connElem.className = "status-badge status-offline";
+          connElem.innerHTML = "<span>●</span> Terputus";
+      }
+  });
+
+  // Real-time Listener Data Firebase
+  const monitoringRef = ref(db, '/monitoring');
+  onValue(monitoringRef, (snapshot) => {
+      const data = snapshot.val();
+
+      if (!data) {
+          document.getElementById("lcdLine1").textContent = "WAITING DATA...";
+          document.getElementById("lcdLine2").textContent = "NO ESP32 DATA";
+          stopWebSirenSound();
+          return;
+      }
+
+      document.getElementById("deviceId").textContent = data.deviceId || "ESP32-SAFETY-01";
+
+      // 1. Gempa
+      const isGempa = data.gempa ? (data.gempa.status === 1 || data.gempa.keterangan === "GEMPA!") : false;
+      document.getElementById("sensor1").textContent = isGempa ? "GEMPA!" : "NORMAL";
+      document.getElementById("sensor1Unit").textContent = data.gempa?.keterangan || "Status Digital";
+
+      // 2. Air
+      const adcVal = data.air?.adc ?? 0;
+      const waterInfo = getWaterCategoryFromADC(adcVal);
+      const waterCategory = data.air?.kategori || waterInfo.text;
+
+      document.getElementById("sensor2").textContent = waterCategory;
+      document.getElementById("sensor2Unit").textContent = "ADC: " + adcVal;
+
+      // Card Highlighting
+      const cardGempa = document.getElementById("cardGempa");
+      if (isGempa) cardGempa.classList.add("card-danger");
+      else cardGempa.classList.remove("card-danger");
+
+      const cardAir = document.getElementById("cardAir");
+      if (waterInfo.level >= 2) cardAir.classList.add("card-danger");
+      else cardAir.classList.remove("card-danger");
+
+      // 3. Logika Evaluasi Bahaya Air & Gempa
+      const isWaterDanger = waterInfo.level === 4 || String(waterCategory).toLowerCase().includes("bahaya");
+      
+      // Kondisi Bahaya Utama: Gempa OR Air Bahaya OR Sirine Dipaksa Nyala Manual
+      const isDanger = isGempa || isWaterDanger || (data.siren === true);
+
+      // Otomatis aktifkan node siren di Firebase jika terdeteksi Bahaya Air / Gempa
+      if ((isGempa || isWaterDanger) && data.siren !== true) {
+          set(ref(db, '/monitoring/siren'), true);
+      }
+
+      // Peringatan Sedang/Tinggi (Siaga)
+      const isWarningOnly = (waterInfo.level >= 2 && waterInfo.level < 4) && !isDanger;
+
+      updateDeviceStatus(data.status || "online", isDanger);
+      updateSirenUI(isDanger, isWarningOnly);
+      document.getElementById("sirenSwitch").checked = !!data.siren;
+
+      // Virtual LCD Update
+      if (isGempa) {
+          document.getElementById("lcdLine1").textContent = "GEMPA TERDETEKSI!";
+      } else if (isWaterDanger) {
+          document.getElementById("lcdLine1").textContent = "BAHAYA: AIR BANJIR!";
+      } else {
+          document.getElementById("lcdLine1").textContent = "AMAN [WiFi: OK]";
+      }
+      
+      document.getElementById("lcdLine2").textContent = "Air: " + waterCategory;
+
+      // Map & Realtime Update
+      const lat = data.lat ?? -6.948306;
+      const lng = data.lng ?? 110.389222;
+      updateMap(lat, lng, data, waterCategory, isDanger);
+
+      const timestamp = new Date();
+      document.getElementById("lastUpdate").textContent = timestamp.toLocaleTimeString("id-ID");
+
+      updateChart(isGempa, waterInfo.level, timestamp);
+      addLog(data, timestamp, waterCategory, isGempa, isDanger);
+  });
+
+  function addLog(data, timestamp, waterText, isGempa, isDanger) {
+      const log = {
+          timestamp: timestamp.toISOString(),
+          device: data.deviceId || "ESP32-SAFETY-01",
+          status: data.status || "online",
+          sensor1: isGempa ? "GEMPA!" : "NORMAL",
+          sensor2: waterText,
+          siren: isDanger ? "ON" : "OFF"
+      };
+
+      eventLogs.unshift(log);
+      if (eventLogs.length > 300) eventLogs.pop();
+      renderLogs();
+  }
+
+  function renderLogs() {
+      const tbody = document.getElementById("logTable");
+      tbody.innerHTML = "";
+      eventLogs.forEach(log => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+              <td>${new Date(log.timestamp).toLocaleString("id-ID")}</td>
+              <td>${log.device}</td>
+              <td>${log.status}</td>
+              <td>${log.sensor1}</td>
+              <td>${log.sensor2}</td>
+              <td>${log.siren}</td>
+          `;
+          tbody.appendChild(row);
+      });
+  }
+
+  // Export CSV Handler
+  document.getElementById("btnDownloadCSV").addEventListener("click", () => {
+      if (eventLogs.length === 0) return alert("Belum ada log data.");
+      const headers = ["Timestamp", "Device", "Status", "Sensor Gempa", "Level Air", "Sirine"];
+      const rows = eventLogs.map(l => [l.timestamp, l.device, l.status, l.sensor1, l.sensor2, l.siren]);
+      const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "iot-monitoring-log.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+  });
+
+  setTimeout(() => map.invalidateSize(), 400);
+</script>
+
+</body>
+</html>
